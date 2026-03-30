@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Yo-Yo Newton's Cradle</title>
+	<style>
+		@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+		
+		body {
+			margin: 0;
+			height: 100vh;
+			background: linear-gradient(#0a0a2a, #1a1a4a);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			overflow: hidden;
+			font-family: 'Press Start 2P', cursive;
+			color: #fff;
+		}
+
+		.container {
+			text-align: center;
+		}
+
+		h1 {
+			font-size: 2.5rem;
+			margin-bottom: 10px;
+			text-shadow: 0 0 20px #ff00ff;
+			letter-spacing: 4px;
+		}
+
+		.subtitle {
+			font-size: 1rem;
+			margin-bottom: 30px;
+			opacity: 0.8;
+		}
+
+		#canvas {
+			border: 8px solid #333;
+			border-radius: 15px;
+			box-shadow: 
+				0 0 0 12px #222,
+				0 0 40px rgba(255, 100, 255, 0.6),
+				inset 0 0 60px rgba(0, 255, 255, 0.3);
+			background: #111;
+		}
+
+		.controls {
+			margin-top: 25px;
+			display: flex;
+			gap: 15px;
+			justify-content: center;
+			flex-wrap: wrap;
+		}
+
+		button {
+			background: #ff00ff;
+			color: #000;
+			border: none;
+			padding: 12px 24px;
+			font-family: 'Press Start 2P', cursive;
+			font-size: 1rem;
+			cursor: pointer;
+			box-shadow: 0 5px 0 #cc00cc;
+			transition: all 0.1s;
+		}
+
+		button:active {
+			transform: translateY(4px);
+			box-shadow: 0 1px 0 #cc00cc;
+		}
+
+		.slider-container {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			background: rgba(0,0,0,0.4);
+			padding: 8px 16px;
+			border-radius: 8px;
+		}
+
+		label {
+			font-size: 0.8rem;
+			white-space: nowrap;
+		}
+
+		input[type="range"] {
+			accent-color: #00ffff;
+		}
+
+		.info {
+			margin-top: 15px;
+			font-size: 0.75rem;
+			opacity: 0.7;
+			max-width: 600px;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>YO-YO CRADLE</h1>
+		<div class="subtitle">NEWTON'S CRADLE... BUT MAKE IT SPIN</div>
+		
+		<canvas id="canvas" width="900" height="600"></canvas>
+		
+		<div class="controls">
+			<button id="reset">RESET</button>
+			<button id="demo">LAUNCH DEMO</button>
+			
+			<div class="slider-container">
+				<label>YO-YOS:</label>
+				<input type="range" id="count" min="3" max="7" value="5" step="1">
+				<span id="count-value">5</span>
+			</div>
+			
+			<div class="slider-container">
+				<label>GRAVITY:</label>
+				<input type="range" id="gravity" min="200" max="800" value="500" step="10">
+				<span id="gravity-value">5.0</span>
+			</div>
+			
+			<div class="slider-container">
+				<label>DAMPING:</label>
+				<input type="range" id="damping" min="0" max="95" value="30" step="5">
+				<span id="damping-value">30%</span>
+			</div>
+		</div>
+		
+		<div class="info">
+			DRAG any yo-yo • Release to swing • Watch the momentum transfer!<br>
+			Classic physics, maximum yo-yo energy ⚡
+		</div>
+	</div>
+
+	<script>
+		const canvas = document.getElementById('canvas');
+		const ctx = canvas.getContext('2d');
+		
+		let yoYos = [];
+		let numYoYos = 5;
+		let gravity = 500;
+		let damping = 0.7;
+		let rodY = 120;
+		let spacing = 0;
+		
+		// Yo-yo class with physics
+		class YoYo {
+			constructor(index) {
+				this.index = index;
+				this.angle = 0;
+				this.angleVel = 0;
+				this.radius = 28;           // outer yo-yo radius
+				this.innerRadius = 12;      // axle radius
+				this.spin = 0;              // extra yo-yo spin effect
+				this.x = 0;
+				this.y = 0;
+				this.stringLength = 280;
+				this.isDragging = false;
+			}
+			
+			update() {
+				if (this.isDragging) return;
+				
+				// Pendulum physics
+				const angularAccel = -(gravity / this.stringLength) * Math.sin(this.angle);
+				this.angleVel += angularAccel * (1/60);
+				this.angleVel *= damping;
+				this.angle += this.angleVel;
+				
+				// Very small natural damping
+				this.angleVel *= 0.995;
+				
+				// Yo-yo spin (visual only)
+				this.spin += this.angleVel * 8;
+			}
+			
+			draw() {
+				const pivotX = canvas.width / 2 + (this.index - (numYoYos - 1) / 2) * spacing;
+				const pivotY = rodY;
+				
+				// String (two strings for classic cradle look)
+				ctx.strokeStyle = '#ddd';
+				ctx.lineWidth = 3;
+				ctx.beginPath();
+				ctx.moveTo(pivotX - 12, pivotY);
+				ctx.lineTo(pivotX + this.stringLength * Math.sin(this.angle) - 12, pivotY + this.stringLength * Math.cos(this.angle));
+				ctx.stroke();
+				
+				ctx.beginPath();
+				ctx.moveTo(pivotX + 12, pivotY);
+				ctx.lineTo(pivotX + this.stringLength * Math.sin(this.angle) + 12, pivotY + this.stringLength * Math.cos(this.angle));
+				ctx.stroke();
+				
+				// Yo-yo body position
+				const yoX = pivotX + this.stringLength * Math.sin(this.angle);
+				const yoY = pivotY + this.stringLength * Math.cos(this.angle);
+				this.x = yoX;
+				this.y = yoY;
+				
+				// Shadow
+				ctx.shadowColor = 'rgba(0,0,0,0.6)';
+				ctx.shadowBlur = 15;
+				ctx.shadowOffsetY = 12;
+				ctx.fillStyle = '#000';
+				ctx.beginPath();
+				ctx.ellipse(yoX + 5, yoY + 28, this.radius + 4, 12, 0, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.shadowBlur = 0;
+				ctx.shadowOffsetY = 0;
+				
+				// Main yo-yo body (two halves with groove)
+				// Left half
+				ctx.fillStyle = '#ff3366';
+				ctx.beginPath();
+				ctx.arc(yoX, yoY, this.radius, 0, Math.PI * 2);
+				ctx.fill();
+				
+				// Right half (slightly offset for 3D look)
+				ctx.fillStyle = '#00ccff';
+				ctx.beginPath();
+				ctx.arc(yoX + 4, yoY, this.radius, 0, Math.PI * 2);
+				ctx.fill();
+				
+				// Black outer rim
+				ctx.strokeStyle = '#111';
+				ctx.lineWidth = 8;
+				ctx.beginPath();
+				ctx.arc(yoX, yoY, this.radius, 0, Math.PI * 2);
+				ctx.stroke();
+				
+				// Inner groove
+				ctx.strokeStyle = '#111';
+				ctx.lineWidth = 4;
+				ctx.beginPath();
+				ctx.arc(yoX, yoY, this.radius - 6, 0, Math.PI * 2);
+				ctx.stroke();
+				
+				// Axle / center
+				ctx.fillStyle = '#222';
+				ctx.beginPath();
+				ctx.arc(yoX, yoY, this.innerRadius, 0, Math.PI * 2);
+				ctx.fill();
+				
+				// Shiny highlight on axle
+				ctx.fillStyle = 'rgba(255,255,255,0.6)';
+				ctx.beginPath();
+				ctx.arc(yoX - 4, yoY - 4, 6, 0, Math.PI * 2);
+				ctx.fill();
+				
+				// String attachment point on top of yo-yo
+				ctx.strokeStyle = '#ddd';
+				ctx.lineWidth = 3;
+				ctx.beginPath();
+				ctx.moveTo(yoX, yoY - this.radius + 4);
+				ctx.lineTo(yoX, yoY - this.radius - 8);
+				ctx.stroke();
+				
+				// Extra spin lines on the yo-yo face (for that spinning feel)
+				ctx.save();
+				ctx.translate(yoX, yoY);
+				ctx.rotate(this.spin * 0.0175); // convert to radians
+				ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+				ctx.lineWidth = 2;
+				for (let i = 0; i < 8; i++) {
+					ctx.beginPath();
+					ctx.moveTo(0, -this.radius + 12);
+					ctx.lineTo(0, this.radius - 12);
+					ctx.rotate(Math.PI / 4);
+					ctx.stroke();
+				}
+				ctx.restore();
+			}
+		}
+		
+		function initYoYos() {
+			yoYos = [];
+			spacing = Math.min(110, (canvas.width - 200) / (numYoYos - 1));
+			
+			for (let i = 0; i < numYoYos; i++) {
+				const yo = new YoYo(i);
+				yo.angle = 0;
+				yoYos.push(yo);
+			}
+		}
+		
+		function detectCollisions() {
+			for (let i = 0; i < yoYos.length - 1; i++) {
+				const a = yoYos[i];
+				const b = yoYos[i + 1];
+				
+				const dx = b.x - a.x;
+				const dy = b.y - a.y;
+				const distance = Math.sqrt(dx * dx + dy * dy);
+				
+				// Approximate collision when centers are close to resting distance
+				const restingDist = spacing * Math.cos(a.angle) + spacing * Math.cos(b.angle) - 2 * (b.radius + 2);
+				
+				if (distance < 2 * b.radius + 8 && Math.abs(a.angleVel) > 0.01) {
+					// Simple momentum transfer (Newton's cradle style)
+					const v1 = a.angleVel;
+					const v2 = b.angleVel;
+					
+					// Almost perfectly elastic transfer for the end ones
+					if (i === 0 || i === yoYos.length - 2) {
+						b.angleVel = v1 * 0.98;
+						a.angleVel = v2 * 0.3; // slight rebound
+					} else {
+						// Middle ones mostly stay still
+						b.angleVel = (v1 + v2) * 0.5;
+						a.angleVel *= 0.2;
+					}
+					
+					// Tiny separation to prevent sticking
+					a.angle += 0.005;
+					b.angle -= 0.005;
+				}
+			}
+		}
+		
+		function drawFrame() {
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			
+			// Background glow
+			const grad = ctx.createRadialGradient(
+				canvas.width/2, rodY + 100, 50,
+				canvas.width/2, rodY + 300, 400
+			);
+			grad.addColorStop(0, 'rgba(100, 255, 255, 0.15)');
+			grad.addColorStop(1, 'transparent');
+			ctx.fillStyle = grad;
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			
+			// Wooden top rod
+			ctx.fillStyle = '#8B4513';
+			ctx.fillRect(80, rodY - 20, canvas.width - 160, 28);
+			
+			// Metal brackets
+			ctx.fillStyle = '#aaa';
+			ctx.fillRect(90, rodY - 35, 20, 40);
+			ctx.fillRect(canvas.width - 110, rodY - 35, 20, 40);
+			
+			// Draw all yo-yos
+			yoYos.forEach(yo => {
+				yo.update();
+				yo.draw();
+			});
+			
+			detectCollisions();
+		}
+		
+		function animate() {
+			drawFrame();
+			requestAnimationFrame(animate);
+		}
+		
+		// Mouse interaction
+		let selectedYoYo = null;
+		
+		function getMousePos(e) {
+			const rect = canvas.getBoundingClientRect();
+			return {
+				x: e.clientX - rect.left,
+				y: e.clientY - rect.top
+			};
+		}
+		
+		canvas.addEventListener('mousedown', e => {
+			const pos = getMousePos(e);
+			
+			for (let i = 0; i < yoYos.length; i++) {
+				const yo = yoYos[i];
+				const dx = pos.x - yo.x;
+				const dy = pos.y - yo.y;
+				if (dx * dx + dy * dy < yo.radius * yo.radius * 2.5) {
+					selectedYoYo = yo;
+					yo.isDragging = true;
+					yo.angleVel = 0;
+					break;
+				}
+			}
+		});
+		
+		window.addEventListener('mousemove', e => {
+			if (!selectedYoYo) return;
+			
+			const pos = getMousePos(e);
+			const pivotX = canvas.width / 2 + (selectedYoYo.index - (numYoYos - 1) / 2) * spacing;
+			const pivotY = rodY;
+			
+			const dx = pos.x - pivotX;
+			const dy = pos.y - pivotY;
+			
+			// Limit pull-back angle
+			let angle = Math.atan2(dx, dy);
+			angle = Math.max(-1.2, Math.min(1.2, angle));
+			selectedYoYo.angle = angle;
+		});
+		
+		window.addEventListener('mouseup', () => {
+			if (selectedYoYo) {
+				selectedYoYo.isDragging = false;
+				selectedYoYo.angleVel = selectedYoYo.angle * 4; // give it velocity based on pull-back
+				selectedYoYo = null;
+			}
+		});
+		
+		// Controls
+		document.getElementById('reset').addEventListener('click', () => {
+			initYoYos();
+		});
+		
+		document.getElementById('demo').addEventListener('click', () => {
+			if (yoYos.length > 0) {
+				yoYos[0].angle = -1.0;
+				yoYos[0].angleVel = 3.5;
+			}
+		});
+		
+		document.getElementById('count').addEventListener('input', e => {
+			numYoYos = parseInt(e.target.value);
+			document.getElementById('count-value').textContent = numYoYos;
+			initYoYos();
+		});
+		
+		document.getElementById('gravity').addEventListener('input', e => {
+			gravity = parseFloat(e.target.value);
+			document.getElementById('gravity-value').textContent = (gravity / 100).toFixed(1);
+		});
+		
+		document.getElementById('damping').addEventListener('input', e => {
+			damping = 1 - (parseFloat(e.target.value) / 100);
+			document.getElementById('damping-value').textContent = e.target.value + '%';
+		});
+		
+		// Keyboard fun
+		window.addEventListener('keydown', e => {
+			if (e.key === '/' && yoYos.length > 0) {
+				yoYos[0].angle = -1.1;
+				yoYos[0].angleVel = 4;
+			}
+		});
+		
+		// Initialize and start
+		initYoYos();
+		animate();
+		
+		console.log('%c✅ Yo-Yo Newton\'s Cradle ready! Drag the yo-yos and watch the magic.', 'color:#ff00ff; font-family:monospace');
+	</script>
+</body>
+</html>
