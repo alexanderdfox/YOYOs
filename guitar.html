@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Cradle</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+body {
+	margin: 0;
+	height: 100vh;
+	background: linear-gradient(#1a0f00, #3a2a0a);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	font-family: 'Press Start 2P', cursive;
+	color: #fff;
+}
+.container {
+	text-align: center;
+}
+h1 {
+	font-size: 2.8rem;
+	margin-bottom: 8px;
+	text-shadow: 0 0 20px #ffcc00;
+	letter-spacing: 6px;
+	color: #ffdd88;
+}
+.subtitle {
+	font-size: 1.1rem;
+	margin-bottom: 30px;
+	opacity: 0.85;
+	color: #ffaa00;
+}
+#canvas {
+	border: 10px solid #3a2a0a;
+	border-radius: 20px;
+	box-shadow: 
+		0 0 0 15px #1a1408,
+		0 0 50px rgba(255, 200, 50, 0.7),
+		inset 0 0 80px rgba(255, 240, 100, 0.2);
+	background: #0f0a00;
+}
+.controls {
+	margin-top: 25px;
+	display: flex;
+	gap: 15px;
+	justify-content: center;
+	flex-wrap: wrap;
+}
+button {
+	background: #ffcc00;
+	color: #3a2a0a;
+	border: none;
+	padding: 14px 28px;
+	font-family: 'Press Start 2P', cursive;
+	font-size: 1rem;
+	cursor: pointer;
+	box-shadow: 0 6px 0 #cc9900;
+	transition: all 0.1s;
+}
+button:active {
+	transform: translateY(5px);
+	box-shadow: 0 2px 0 #cc9900;
+}
+.slider-container {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	background: rgba(0,0,0,0.5);
+	padding: 10px 18px;
+	border-radius: 10px;
+}
+label {
+	font-size: 0.85rem;
+	white-space: nowrap;
+	color: #ffdd88;
+}
+input[type="range"] {
+	accent-color: #ffaa00;
+}
+.info {
+	margin-top: 20px;
+	font-size: 0.8rem;
+	opacity: 0.75;
+	max-width: 620px;
+	line-height: 1.4;
+}
+</style>
+</head>
+<body>
+<div class="container">
+	<h1>GUITAR CRADLE</h1>
+	<div class="subtitle">NEWTON'S CRADLE... BUT MAKE IT ROCK</div>
+	<canvas id="canvas" width="900" height="620"></canvas>
+	
+	<div class="controls">
+		<button id="reset">RESET</button>
+		<button id="demo">STRUM DEMO</button>
+		
+		<div class="slider-container">
+			<label>STRINGS:</label>
+			<input type="range" id="count" min="3" max="7" value="5" step="1">
+			<span id="count-value">5</span>
+		</div>
+		<div class="slider-container">
+			<label>GRAVITY:</label>
+			<input type="range" id="gravity" min="200" max="800" value="480" step="10">
+			<span id="gravity-value">4.8</span>
+		</div>
+		<div class="slider-container">
+			<label>DAMPING:</label>
+			<input type="range" id="damping" min="0" max="95" value="35" step="5">
+			<span id="damping-value">35%</span>
+		</div>
+	</div>
+	
+	<div class="info">
+		DRAG any guitar head • Release to STRUM • Watch &amp; HEAR the momentum transfer!<br>
+		Classic physics + real guitar plucks 🎸⚡
+	</div>
+</div>
+
+<script>
+// Web Audio API setup
+let audioContext;
+function initAudio() {
+	if (!audioContext) {
+		audioContext = new (window.AudioContext || window.webkitAudioContext)();
+	}
+}
+
+// Guitar pluck sound using Web Audio API (karplus-strong inspired simple pluck)
+function playGuitarPluck(velocity = 1, index = 0) {
+	if (!audioContext) return;
+	
+	const now = audioContext.currentTime;
+	
+	// Different base frequencies for each guitar (like different strings/notes)
+	const baseFreqs = [220, 261.63, 329.63, 392, 440]; // A3, C4, E4, G4, A4
+	let freq = baseFreqs[index % baseFreqs.length];
+	
+	// Create oscillator for the main tone
+	const oscillator = audioContext.createOscillator();
+	oscillator.type = 'sawtooth'; // raw string-like tone
+	oscillator.frequency.setValueAtTime(freq, now);
+	
+	// Low-pass filter to simulate body resonance
+	const filter = audioContext.createBiquadFilter();
+	filter.type = 'lowpass';
+	filter.frequency.setValueAtTime(1200 + Math.random() * 800, now);
+	
+	// Gain for amplitude envelope (pluck decay)
+	const gain = audioContext.createGain();
+	gain.gain.setValueAtTime(velocity * 0.8, now);
+	gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2 + Math.random() * 0.6);
+	
+	// Slight detune for richer sound
+	const detuneOsc = audioContext.createOscillator();
+	detuneOsc.type = 'triangle';
+	detuneOsc.frequency.setValueAtTime(freq * 1.005, now);
+	
+	const detuneGain = audioContext.createGain();
+	detuneGain.gain.setValueAtTime(0.15 * velocity, now);
+	detuneGain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+	
+	// Noise burst for initial pluck attack
+	const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.08, audioContext.sampleRate);
+	const noiseData = noiseBuffer.getChannelData(0);
+	for (let i = 0; i < noiseData.length; i++) {
+		noiseData[i] = Math.random() * 2 - 1;
+	}
+	const noiseSource = audioContext.createBufferSource();
+	noiseSource.buffer = noiseBuffer;
+	
+	const noiseFilter = audioContext.createBiquadFilter();
+	noiseFilter.type = 'bandpass';
+	noiseFilter.frequency.setValueAtTime(1800, now);
+	noiseFilter.Q.setValueAtTime(2, now);
+	
+	const noiseGain = audioContext.createGain();
+	noiseGain.gain.setValueAtTime(velocity * 0.6, now);
+	noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+	
+	// Connect everything
+	oscillator.connect(filter);
+	detuneOsc.connect(detuneGain);
+	detuneGain.connect(filter);
+	
+	noiseSource.connect(noiseFilter);
+	noiseFilter.connect(noiseGain);
+	noiseGain.connect(filter);
+	
+	filter.connect(gain);
+	gain.connect(audioContext.destination);
+	
+	// Start everything
+	oscillator.start(now);
+	detuneOsc.start(now);
+	noiseSource.start(now);
+	
+	// Stop oscillators after decay
+	oscillator.stop(now + 2);
+	detuneOsc.stop(now + 1.5);
+}
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let guitars = [];
+let numGuitars = 5;
+let gravity = 480;
+let damping = 0.65;
+let rodY = 130;
+let spacing = 0;
+
+// Guitar class
+class Guitar {
+	constructor(index) {
+		this.index = index;
+		this.angle = 0;
+		this.angleVel = 0;
+		this.spin = 0;
+		this.x = 0;
+		this.y = 0;
+		this.stringLength = 290;
+		this.isDragging = false;
+		this.color = ['#ff3366', '#00ccff', '#ffff33', '#33ff99', '#ff66cc'][index % 5];
+		this.lastPluckTime = 0;
+	}
+
+	update() {
+		if (this.isDragging) return;
+
+		const angularAccel = -(gravity / this.stringLength) * Math.sin(this.angle);
+		this.angleVel += angularAccel * (1/60);
+		this.angleVel *= damping;
+		this.angle += this.angleVel;
+		this.angleVel *= 0.994;
+
+		this.spin += this.angleVel * 12;
+		
+		// Auto-pluck when swinging fast (feels alive)
+		const speed = Math.abs(this.angleVel);
+		if (speed > 0.12 && Date.now() - this.lastPluckTime > 180) {
+			const velocity = Math.min(speed * 2.5, 1.8);
+			playGuitarPluck(velocity, this.index);
+			this.lastPluckTime = Date.now();
+		}
+	}
+
+	draw() {
+		const pivotX = canvas.width / 2 + (this.index - (numGuitars - 1) / 2) * spacing;
+		const pivotY = rodY;
+
+		// Strings
+		ctx.strokeStyle = '#ddd';
+		ctx.lineWidth = 5;
+		ctx.beginPath();
+		ctx.moveTo(pivotX - 8, pivotY);
+		ctx.lineTo(pivotX + this.stringLength * Math.sin(this.angle) - 8, pivotY + this.stringLength * Math.cos(this.angle));
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.moveTo(pivotX + 8, pivotY);
+		ctx.lineTo(pivotX + this.stringLength * Math.sin(this.angle) + 8, pivotY + this.stringLength * Math.cos(this.angle));
+		ctx.stroke();
+
+		const gx = pivotX + this.stringLength * Math.sin(this.angle);
+		const gy = pivotY + this.stringLength * Math.cos(this.angle);
+		this.x = gx;
+		this.y = gy;
+
+		// Shadow
+		ctx.shadowColor = 'rgba(0,0,0,0.7)';
+		ctx.shadowBlur = 20;
+		ctx.shadowOffsetY = 15;
+		ctx.fillStyle = '#000';
+		ctx.beginPath();
+		ctx.ellipse(gx + 8, gy + 45, 42, 14, 0, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.shadowBlur = 0;
+		ctx.shadowOffsetY = 0;
+
+		// Guitar body
+		ctx.fillStyle = this.color;
+		ctx.beginPath();
+		ctx.ellipse(gx, gy + 12, 38, 52, 0, 0, Math.PI * 2);
+		ctx.fill();
+
+		ctx.beginPath();
+		ctx.ellipse(gx, gy - 18, 22, 28, 0, 0, Math.PI * 2);
+		ctx.fill();
+
+		ctx.strokeStyle = '#111';
+		ctx.lineWidth = 9;
+		ctx.beginPath();
+		ctx.ellipse(gx, gy + 12, 38, 52, 0, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.ellipse(gx, gy - 18, 22, 28, 0, 0, Math.PI * 2);
+		ctx.stroke();
+
+		// Soundhole
+		ctx.fillStyle = '#111';
+		ctx.beginPath();
+		ctx.arc(gx, gy + 8, 11, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Neck
+		ctx.fillStyle = '#3a2a0a';
+		ctx.fillRect(gx - 9, gy - 48, 18, 68);
+
+		// Headstock
+		ctx.fillStyle = '#222';
+		ctx.beginPath();
+		ctx.roundRect(gx - 14, gy - 92, 28, 42, 6);
+		ctx.fill();
+
+		// Tuning pegs with spin
+		ctx.save();
+		ctx.translate(gx, gy - 75);
+		ctx.rotate(this.spin * 0.02);
+		ctx.fillStyle = '#ddd';
+		for (let i = -1; i <= 1; i++) {
+			ctx.fillRect(i * 9 - 3, -18, 6, 12);
+		}
+		ctx.restore();
+
+		// Highlight
+		ctx.fillStyle = 'rgba(255,255,255,0.25)';
+		ctx.beginPath();
+		ctx.ellipse(gx - 12, gy - 5, 18, 35, -0.6, 0, Math.PI * 2);
+		ctx.fill();
+	}
+}
+
+function initGuitars() {
+	guitars = [];
+	spacing = Math.min(115, (canvas.width - 220) / (numGuitars - 1));
+	for (let i = 0; i < numGuitars; i++) {
+		guitars.push(new Guitar(i));
+	}
+}
+
+function detectCollisions() {
+	for (let i = 0; i < guitars.length - 1; i++) {
+		const a = guitars[i];
+		const b = guitars[i + 1];
+		const dx = b.x - a.x;
+		const dy = b.y - a.y;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+
+		if (distance < 75 && Math.abs(a.angleVel) > 0.008) {
+			const v1 = a.angleVel;
+			const v2 = b.angleVel;
+
+			if (i === 0 || i === guitars.length - 2) {
+				b.angleVel = v1 * 0.97;
+				a.angleVel = v2 * 0.35;
+				
+				// Pluck on strong collision
+				if (Math.abs(v1) > 0.15) {
+					playGuitarPluck(Math.min(Math.abs(v1) * 1.8, 1.6), b.index);
+				}
+			} else {
+				b.angleVel = (v1 + v2) * 0.52;
+				a.angleVel *= 0.18;
+			}
+
+			a.angle += 0.006;
+			b.angle -= 0.006;
+		}
+	}
+}
+
+function drawFrame() {
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	const grad = ctx.createRadialGradient(
+		canvas.width/2, rodY + 120, 60,
+		canvas.width/2, rodY + 380, 450
+	);
+	grad.addColorStop(0, 'rgba(255, 180, 50, 0.18)');
+	grad.addColorStop(1, 'transparent');
+	ctx.fillStyle = grad;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	ctx.fillStyle = '#5c4033';
+	ctx.fillRect(70, rodY - 25, canvas.width - 140, 38);
+
+	ctx.fillStyle = '#bbb';
+	ctx.fillRect(85, rodY - 42, 22, 45);
+	ctx.fillRect(canvas.width - 107, rodY - 42, 22, 45);
+
+	guitars.forEach(g => {
+		g.update();
+		g.draw();
+	});
+
+	detectCollisions();
+}
+
+function animate() {
+	drawFrame();
+	requestAnimationFrame(animate);
+}
+
+// Mouse interaction
+let selectedGuitar = null;
+
+function getMousePos(e) {
+	const rect = canvas.getBoundingClientRect();
+	return {
+		x: e.clientX - rect.left,
+		y: e.clientY - rect.top
+	};
+}
+
+canvas.addEventListener('mousedown', e => {
+	initAudio(); // ensure audio is unlocked
+	const pos = getMousePos(e);
+	for (let g of guitars) {
+		const dx = pos.x - g.x;
+		const dy = pos.y - g.y;
+		if (dx * dx + dy * dy < 2200) {
+			selectedGuitar = g;
+			g.isDragging = true;
+			g.angleVel = 0;
+			break;
+		}
+	}
+});
+
+window.addEventListener('mousemove', e => {
+	if (!selectedGuitar) return;
+	const pos = getMousePos(e);
+	const pivotX = canvas.width / 2 + (selectedGuitar.index - (numGuitars - 1) / 2) * spacing;
+	const pivotY = rodY;
+	const dx = pos.x - pivotX;
+	const dy = pos.y - pivotY;
+
+	let angle = Math.atan2(dx, dy);
+	angle = Math.max(-1.25, Math.min(1.25, angle));
+	selectedGuitar.angle = angle;
+});
+
+window.addEventListener('mouseup', () => {
+	if (selectedGuitar) {
+		selectedGuitar.isDragging = false;
+		const releaseVelocity = Math.abs(selectedGuitar.angle) * 4.2;
+		selectedGuitar.angleVel = selectedGuitar.angle * 4.2;
+		
+		// Strong pluck on release
+		if (releaseVelocity > 0.5) {
+			playGuitarPluck(Math.min(releaseVelocity * 0.9, 1.9), selectedGuitar.index);
+		}
+		
+		selectedGuitar = null;
+	}
+});
+
+// Controls
+document.getElementById('reset').addEventListener('click', () => {
+	initGuitars();
+});
+
+document.getElementById('demo').addEventListener('click', () => {
+	initAudio();
+	if (guitars.length > 0) {
+		guitars[0].angle = -1.05;
+		guitars[0].angleVel = 4.0;
+		playGuitarPluck(1.8, 0); // big opening strum
+	}
+});
+
+document.getElementById('count').addEventListener('input', e => {
+	numGuitars = parseInt(e.target.value);
+	document.getElementById('count-value').textContent = numGuitars;
+	initGuitars();
+});
+
+document.getElementById('gravity').addEventListener('input', e => {
+	gravity = parseFloat(e.target.value);
+	document.getElementById('gravity-value').textContent = (gravity / 100).toFixed(1);
+});
+
+document.getElementById('damping').addEventListener('input', e => {
+	damping = 1 - (parseFloat(e.target.value) / 100);
+	document.getElementById('damping-value').textContent = e.target.value + '%';
+});
+
+window.addEventListener('keydown', e => {
+	if (e.key === '/' && guitars.length > 0) {
+		initAudio();
+		guitars[0].angle = -1.15;
+		guitars[0].angleVel = 4.5;
+		playGuitarPluck(2.0, 0);
+	}
+});
+
+// Initialize
+initGuitars();
+animate();
+
+console.log('%c🎸 Guitar Cradle with sound ready! Drag to strum and hear each guitar pluck.', 'color:#ffcc00; font-family:monospace');
+</script>
+</body>
+</html>
